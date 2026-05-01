@@ -690,6 +690,9 @@ async function init() {
 }
 
 async function refreshUserInfo() {
+  // Show auth screen immediately while we verify in background
+  // This prevents the blank/loading screen on startup
+  showScreen("screenAuth");
   try {
     const res = await post({ action: "get_user_info", sessionToken: state.sessionToken });
     if (res.status === "success") {
@@ -701,7 +704,8 @@ async function refreshUserInfo() {
       logout();
     }
   } catch(e) {
-    logout();
+    // On any error, just show auth — don't log user out of localStorage
+    showScreen("screenAuth");
   }
 }
 
@@ -1159,15 +1163,19 @@ function toast(msg, type = "info") {
 // API HELPER — Uses GET to bypass CORS on GAS
 // ══════════════════════════════════════════════════
 async function post(body) {
+  if (!API_URL || API_URL === "PASTE_YOUR_WEB_APP_URL_HERE") {
+    return { status: "error", message: "⚠️ API URL not set in index.html" };
+  }
   try {
     const payload = encodeURIComponent(JSON.stringify(body));
     const url     = API_URL + "?data=" + payload;
     const res     = await fetch(url, { method: "GET", redirect: "follow" });
     const text    = await res.text();
-    // GAS sometimes prepends garbage — find the first { and last }
+    console.log("GAS raw response:", text.substring(0, 300));
+    // GAS sometimes wraps response — find the first { and last }
     const start = text.indexOf("{");
     const end   = text.lastIndexOf("}");
-    if (start === -1 || end === -1) throw new Error("Bad response: " + text.substring(0, 200));
+    if (start === -1 || end === -1) throw new Error("No JSON in response: " + text.substring(0, 200));
     return JSON.parse(text.substring(start, end + 1));
   } catch(e) {
     console.error("API error:", e);
